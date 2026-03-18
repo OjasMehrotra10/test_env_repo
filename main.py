@@ -64,48 +64,54 @@ def get_registry_id_by_name(name):
     return None
 
 def create_or_update_github_registry():
-    existing_id = get_registry_id_by_name(CLIENT_NAME)
+    import nipyapi
 
-    body = {
-        "revision": {"version": 0},
-        "component": {
-            "name": CLIENT_NAME,
-            "type": "org.apache.nifi.github.GitHubFlowRegistryClient",
-            "properties": {
-                "GitHub API URL": "https://api.github.com/",
-                "Repository Owner": REPO_OWNER,
-                "Repository Name": REPO_NAME,
-                "Authentication Type": "PERSONAL_ACCESS_TOKEN",
-                "Personal Access Token": GITHUB_PAT,
-                "Default Branch": BRANCH,
-            }
-        }
+    # Step 1: Check existing clients (NiPyAPI way)
+    existing_clients = nipyapi.versioning.list_registry_clients().registries
+
+    existing_client = None
+    for c in existing_clients:
+        if c.component.name == CLIENT_NAME:
+            existing_client = c
+            break
+
+    properties = {
+        'GitHub API URL': 'https://api.github.com/',
+        'Repository Owner': REPO_OWNER,
+        'Repository Name': REPO_NAME,
+        'Authentication Type': 'PERSONAL_ACCESS_TOKEN',
+        'Personal Access Token': GITHUB_PAT,
+        'Default Branch': BRANCH
     }
 
-    if existing_id:
-        print("🔄 Updating registry PAT...")
-        body["component"]["id"] = existing_id
+    if existing_client:
+        print("🔄 Updating registry via NiPyAPI...")
 
-        # Need version
-        for c in list_registry_clients():
-            if c["id"] == existing_id:
-                body["revision"]["version"] = c["revision"]["version"]
+        updated_component = dict(existing_client.component.to_dict())
+        updated_component["properties"] = properties
 
-        r = requests.put(
-            f"{NIFI_HOST}/controller/registry-clients/{existing_id}",
-            headers=HEADERS,
-            json=body
+        result = nipyapi.nifi.ControllerApi().update_flow_registry_client(
+            id=existing_client.id,
+            body={
+                "component": updated_component,
+                "revision": {
+                    "version": existing_client.revision.version
+                }
+            }
         )
+
     else:
-        print("➕ Creating registry...")
-        r = requests.post(
-            f"{NIFI_HOST}/controller/registry-clients",
-            headers=HEADERS,
-            json=body
+        print("➕ Creating registry via NiPyAPI...")
+
+        result = nipyapi.versioning.create_registry_client(
+            name=CLIENT_NAME,
+            reg_type='org.apache.nifi.github.GitHubFlowRegistryClient',
+            description='GitHub Registry Client',
+            properties=properties
         )
 
-    print("Registry:", r.status_code)
-    return r.json()
+    print("✅ Registry ready")
+    return result
 
 """
 ========================
