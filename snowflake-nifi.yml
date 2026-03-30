@@ -1,50 +1,47 @@
 name: Deploy NiFi Flow via Snowflake
 
 on:
-pull_request:
-types: [closed]
-branches:
-- main
+  pull_request:
+    types: [closed]
+    branches:
+      - main
 
 jobs:
-deploy:
-if: github.event.pull_request.merged == true
-runs-on: ubuntu-latest
+  deploy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
 
-```
-steps:
-  - name: Checkout Repo
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-  - name: Install Snowflake CLI
-    run: |
-      pip install snowflake-cli
+      - name: Install Snowflake CLI
+        run: pip install snowflake-cli
 
-  - name: Setup Snowflake Config
-    run: |
-      mkdir -p ~/.snowflake
-      echo "
-      [connections.default]
-      account = RBFUEDQ-WBC50273
-      user = LIRIKSNOWFLAKEADMIN
-      role = MSK_STREAMING_RL
-      warehouse = COMPUTE_WH
-      database = YOUR_DB
-      schema = PUBLIC
-      authenticator = SNOWFLAKE_JWT
-      private_key_path = ~/.snowflake/rsa_key.p8
-      " > ~/.snowflake/config.toml
+      - name: Setup Snowflake Config
+        run: |
+          mkdir -p ~/.snowflake
 
-  - name: Inject Private Key
-    run: |
-      echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > ~/.snowflake/rsa_key.p8
-      chmod 600 ~/.snowflake/rsa_key.p8
+          cat <<EOF > ~/.snowflake/config.toml
+          [connections.default]
+          account = "RBFUEDQ-WBC50273"
+          user = "LIRIKSNOWFLAKEADMIN"
+          role = "MSK_STREAMING_RL"
+          warehouse = "AUDITORIA_WAREHOUSE"
+          database = "AUDITORIA"
+          schema = "KAFKA_DATA"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "~/.snowflake/rsa_key.p8"
+          EOF
 
-  - name: Test Snowflake Connection
-    run: |
-      snow connection test
+      - name: Inject Private Key
+        run: |
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > ~/.snowflake/rsa_key.p8
+          chmod 600 ~/.snowflake/rsa_key.p8
 
-  - name: Trigger Snowflake Procedure
-    run: |
-      snow sql -q "CALL RUN_NIPYAPI_PIPELINE();"
-```
+      - name: Test Snowflake Connection
+        run: snow connection test
+
+      - name: Trigger Snowflake Procedure
+        run: |
+          snow sql -q "CALL RUN_NIPYAPI_PIPELINE();"
