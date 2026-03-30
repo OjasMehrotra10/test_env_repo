@@ -1,61 +1,80 @@
 name: Snowflake + NiFi Automation
 
 on:
-pull_request:
-types: [closed]
+  pull_request:
+    types: [closed]
 
 jobs:
-run-pipeline:
-if: github.event.pull_request.merged == true
-runs-on: ubuntu-latest
+  run-pipeline:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
 
-```
-steps:
-  - name: Checkout repo
-    uses: actions/checkout@v4
+    env:
+      SNOWFLAKE_ACCOUNT: RBFUEDQ-WBC50273
+      SNOWFLAKE_USER: LIRIKSNOWFLAKEADMIN
+      SNOWFLAKE_ROLE: MSK_STREAMING_RL
+      SNOWFLAKE_WAREHOUSE: DASHBOARD_WH
+      SNOWFLAKE_DATABASE: AAI_BRONZE
+      SNOWFLAKE_SCHEMA: PUBLIC
 
-  # -----------------------------
-  # Setup Python (for nipyapi)
-  # -----------------------------
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.10'
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-  - name: Install Python dependencies
-    run: |
-      pip install snowflake-connector-python
-      pip install snowflake-cli
-      pip install nipyapi
+      # -----------------------------
+      # Setup Python
+      # -----------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-  # -----------------------------
-  # Setup Snowflake Key
-  # -----------------------------
-  - name: Create private key file
-    run: |
-      echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > rsa_key.p8
-      chmod 600 rsa_key.p8
+      - name: Install dependencies
+        run: |
+          pip install snowflake-connector-python
+          pip install nipyapi
 
-  # -----------------------------
-  # Snowflake Execution
-  # -----------------------------
-  - name: Run Snowflake Procedure
-    run: |
-      snow sql \
-        --account RBFUEDQ-WBC50273 \
-        --user LIRIKSNOWFLAKEADMIN \
-        --authenticator SNOWFLAKE_JWT \
-        --private-key-path rsa_key.p8 \
-        --role MSK_STREAMING_RL \
-        --warehouse DASHBOARD_WH \
-        --database AAI_BRONZE \
-        --schema PUBLIC \
-        -q "CALL AAI_BRONZE.AUTO_SHARE_BRONZE();"
+      # -----------------------------
+      # Install Snowflake CLI (IMPORTANT)
+      # -----------------------------
+      - name: Install Snowflake CLI
+        run: |
+          pip install snowflake-cli-labs
 
-  # -----------------------------
-  # Run NiFi Script
-  # -----------------------------
-  - name: Run NiFi automation
-    run: |
-      python nifi_trigger.py
-```
+      # -----------------------------
+      # Setup Private Key
+      # -----------------------------
+      - name: Create private key file
+        run: |
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > rsa_key.p8
+          chmod 600 rsa_key.p8
+
+      # -----------------------------
+      # Run Snowflake Procedure
+      # -----------------------------
+      - name: Execute Snowflake Procedure
+        run: |
+          snow connection add \
+            --account $SNOWFLAKE_ACCOUNT \
+            --user $SNOWFLAKE_USER \
+            --authenticator SNOWFLAKE_JWT \
+            --private-key-path rsa_key.p8 \
+            --warehouse $SNOWFLAKE_WAREHOUSE \
+            --role $SNOWFLAKE_ROLE \
+            --database $SNOWFLAKE_DATABASE \
+            --schema $SNOWFLAKE_SCHEMA \
+            --connection-name ci_conn
+
+          snow sql \
+            --connection ci_conn \
+            -q "CALL AAI_BRONZE.AUTO_SHARE_BRONZE();"
+
+      # -----------------------------
+      # Run NiFi Script
+      # -----------------------------
+      - name: Run NiFi automation
+        env:
+          NIFI_HOST: ${{ secrets.NIFI_HOST }}
+          NIFI_TOKEN: ${{ secrets.NIFI_TOKEN }}
+        run: |
+          python nifi_trigger.py
