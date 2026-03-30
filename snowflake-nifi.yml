@@ -1,41 +1,50 @@
 name: Deploy NiFi Flow via Snowflake
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - main
+pull_request:
+types: [closed]
+branches:
+- main
 
 jobs:
-  deploy:
-    if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
+deploy:
+if: github.event.pull_request.merged == true
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+```
+steps:
+  - name: Checkout Repo
+    uses: actions/checkout@v4
 
-      - name: Install Snowflake CLI
-        run: |
-          pip install snowflake-cli
+  - name: Install Snowflake CLI
+    run: |
+      pip install snowflake-cli
 
-      - name: Setup Snowflake key
-        run: |
-          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > rsa_key.p8
-          chmod 600 rsa_key.p8
+  - name: Setup Snowflake Config
+    run: |
+      mkdir -p ~/.snowflake
+      echo "
+      [connections.default]
+      account = RBFUEDQ-WBC50273
+      user = LIRIKSNOWFLAKEADMIN
+      role = MSK_STREAMING_RL
+      warehouse = COMPUTE_WH
+      database = YOUR_DB
+      schema = PUBLIC
+      authenticator = SNOWFLAKE_JWT
+      private_key_path = ~/.snowflake/rsa_key.p8
+      " > ~/.snowflake/config.toml
 
-      - name: Configure Snowflake connection
-        run: |
-          snow connection add \
-            --connection-name ci_conn \
-            --account RBFUEDQ-WBC50273 \
-            --user LIRIKSNOWFLAKEADMIN \
-            --private-key-path rsa_key.p8 \
-            --role MSK_STREAMING_RL \
-            --warehouse <YOUR_WAREHOUSE> \
-            --database <YOUR_DB> \
-            --schema <YOUR_SCHEMA>
+  - name: Inject Private Key
+    run: |
+      echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > ~/.snowflake/rsa_key.p8
+      chmod 600 ~/.snowflake/rsa_key.p8
 
-      - name: Call Snowflake Procedure
-        run: |
-          snow sql -c ci_conn -q "CALL AUTO_DEPLOY_NIFI_FLOW();"
+  - name: Test Snowflake Connection
+    run: |
+      snow connection test
+
+  - name: Trigger Snowflake Procedure
+    run: |
+      snow sql -q "CALL RUN_NIPYAPI_PIPELINE();"
+```
