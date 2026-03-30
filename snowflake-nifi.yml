@@ -34,10 +34,18 @@ jobs:
           private_key_path = "~/.snowflake/rsa_key.p8"
           EOF
 
+      # 🔐 Decode Base64 Private Key (SAFE METHOD)
       - name: Inject Private Key
         run: |
-          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > ~/.snowflake/rsa_key.p8
+          mkdir -p ~/.snowflake
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY_BASE64 }}" | base64 --decode > ~/.snowflake/rsa_key.p8
           chmod 600 ~/.snowflake/rsa_key.p8
+
+      # 🧪 Debug (optional - remove later)
+      - name: Debug Key (Optional)
+        run: |
+          ls -l ~/.snowflake
+          head -n 2 ~/.snowflake/rsa_key.p8
 
       - name: Test Snowflake Connection
         run: snow connection test
